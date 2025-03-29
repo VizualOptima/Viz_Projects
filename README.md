@@ -1,2 +1,2 @@
-# Viz_Projects
-Project Repository
+# Vizual Optima Projects
+This is the Project Repository
