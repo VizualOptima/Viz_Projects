@@ -1,6 +1,6 @@
 import streamlit as st
 import pandas as pd
-import os
+import matplotlib.pyplot as plt
 
 #app title
 st.title("Data Annotation App")
@@ -11,47 +11,65 @@ if file_upload is not None:
     startup_df = pd.read_csv(file_upload)
 
 #to have the user select the column to annotate
-column_pick = st.selectbox("Select text column",startup_df.columns)
+column_pick = st.multiselect("Select text column",startup_df.columns)
 
-#create the annotation storage
-if "annotations" not in st.session_state:
-    st.session_state.annotations = {}
+if not column_pick:
+    st.warning("Please select at least one column.")
+else:
+    st.success(f"Annotating the following column(s): {', '.join(column_pick)}")
 
-# Display one row at a time for annotation
-index = st.number_input("Go to row number", min_value=0, max_value=len(startup_df)-1, step=1)
-words = startup_df.loc[index, column_pick]
+# #create the annotation storage
+# if "annotations" not in st.session_state:
+#     st.session_state.annotations = {}
 
-#Words to annotate
-st.subheader("Words to Annotate")
-st.write(words)
+#to enter keywords/labels
+st.subheader("Keywords and label tags")
+keywords = st.text_input("E.g : AI, blockchain,finance").split(",")
+keywords = [word.strip().lower() for word in keywords if word.strip()]
 
-#multiselect keywords
-keywords = st.text_input("Enter word/label to tag").split(",")
-selected_keywords = [k.strip() for k in keywords if k.strip() in words]
+#Annotation
 
-st.write("Detected keyword in text:", selected_keywords)
+st.subheader("Annotation")
 
-#save annotation
-if st.button("Save Annotation"):
-    st.session_state.annotations[index] = selected_keywords
-    st.success("Annotation saved")
+if st.button("Annotate Columns"):
+    def row_has_keyword(row):
+        return any(
+            any(word in str(row[col]).lower() for word in keywords)
+            for col in column_pick
+        )
+    startup_df["contains_keyword"] = startup_df.apply(row_has_keyword,axis=1)
 
- # Download annotations
-    if st.button("Download Annotations"):
-        annotated_df = pd.DataFrame([
-            {"Row": k, "Text": startup_df.loc[k, column_pick], "Annotations": v}
-            for k, v in st.session_state.annotations.items()
-        ])
+    annotated_df = startup_df[startup_df["contains_keyword"]==True]
+    st.session_state.annotated_df = annotated_df
 
-         # Save to a local file
-        output_path = "saved_annotations.csv"
-        annotated_df.to_csv(output_path, index=False)
+    st.success("Annotations applied across selected columns")
 
-        st.success(f"Annotations saved locally at: {os.path.abspath(output_path)}")
-        st.write("Current working directory:", os.getcwd())
+ # Download annotated data
+st.subheader("Download Data")
+if "annotated_df" in st.session_state and not st.session_state.annotated_df.empty:    
+    st.download_button(
+            label="Download Annotated Data",
+            data=st.session_state.annotated_df.to_csv(index=False),
+            file_name="annotated_startups_multi_column.csv"
+        )
+else: st.info("No annotated data available yet. Please run annotation first.")
 
-        st.download_button("Download CSV", data=annotated_df.to_csv(index=False), file_name="annotations.csv")
+st.subheader("Charts")
 
-    # Show existing annotations
-    if st.checkbox("Show All Annotations"):
-        st.write(st.session_state.annotations)
+industry_counts = (
+        annotated_df[Industry]
+        .value_counts()
+        .sort_values(ascending=False)
+    )
+
+st.write(industry_counts)
+st.bar_chart(industry_counts)
+
+scatter_df = annotated_df[[Industry, year_col]].dropna()
+
+fig, ax = plt.subplots()
+ax.scatter(scatter_df[year_col], scatter_df[industry_col].astype(str))
+ax.set_xlabel("Year Founded")
+ax.set_ylabel("Industry")
+ax.set_title("Tagged Startups by Year and Industry")
+st.pyplot(fig)
